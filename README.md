@@ -1,0 +1,71 @@
+# AWS Region Account Nuke
+
+A deliberately small CLI for removing selected high-cost AWS resources from one account and region.
+It supports MSK, ElastiCache, OpenSearch, Aurora, and standalone RDS instances.
+
+The command is safe by default: it only produces a plan unless `--execute` is supplied, requires an
+explicit account and service list, and requires at least one resource ID or tag selector.
+
+## Build
+
+```sh
+go build ./cmd/aws-region-account-nuke
+```
+
+AWS credentials use the normal SDK credential chain. `--profile` can select an AWS shared-config
+profile; SSO, environment credentials, and assumed-role profiles work through that chain.
+
+## Preview a plan
+
+```sh
+./aws-region-account-nuke \
+  --account 123456789012 \
+  --region ap-south-1 \
+  --services msk,elasticache,opensearch,rds \
+  --tag Environment=preview
+```
+
+Selectors are combined with OR: a resource is selected if its ID/name/ARN matches any `--resource-id`,
+or if all supplied `--tag` values match. Repeat either flag as needed. Supported service names are:
+
+- `msk`: provisioned and serverless MSK clusters
+- `elasticache`: replication groups, standalone cache clusters, and serverless caches
+- `opensearch`: managed domains and serverless collections
+- `rds`: Aurora clusters and standalone RDS instances
+
+Resources tagged `DoNotDelete=true` are always shown as protected and never deleted.
+Deleting an Aurora cluster also deletes its member DB instances, because AWS requires this ordering.
+Every member is checked for the protection tag and deletion protection before any member is changed.
+
+## Execute
+
+Review the plan, then add `--execute`. The command asks you to type the 12-digit account ID:
+
+```sh
+./aws-region-account-nuke ... --execute
+```
+
+For unattended cleanup, pass the same value with `--confirm-account 123456789012`. This is deliberately
+not a generic `--yes` switch. Use `--deny-account` repeatedly, or set a comma-separated
+`AWS_NUKE_DENY_ACCOUNTS`, to block production accounts. A denied account cannot be overridden.
+
+Deletion protection is not changed by default. `--disable-deletion-protection` permits the CLI to turn
+it off for selected RDS/Aurora resources before deletion. RDS/Aurora final snapshots are skipped, while
+manual snapshots, automated backups, subnet groups, parameter groups, and security groups are retained.
+
+By default, execution waits for each resource to disappear and deletes at most two resources at once.
+Use `--wait=false`, `--parallel`, and `--timeout` to adjust this. A timestamped JSON report is written for
+both dry runs and executions; use `--report` to choose its path.
+
+## Safety contract
+
+1. STS must report exactly the account supplied with `--account`.
+2. The account must not appear in the denylist.
+3. Services and selectors must be explicit; there is no implicit "all resources" mode.
+4. `DoNotDelete=true` cannot be overridden.
+5. Dry-run is the default, and execution requires account-ID confirmation.
+6. The CLI does not delete snapshots or shared networking/configuration resources.
+
+The IAM role running the command needs read/tag-list permissions for selected services and STS, plus
+the corresponding delete permissions. It only needs modify permissions when
+`--disable-deletion-protection` is used.

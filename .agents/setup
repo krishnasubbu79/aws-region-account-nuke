@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go_version="1.24.13"
+
+case "$(uname -m)" in
+  x86_64)
+    go_arch="amd64"
+    go_sha256="1fc94b57134d51669c72173ad5d49fd62afb0f1db9bf3f798fd98ee423f8d730"
+    ;;
+  aarch64|arm64)
+    go_arch="arm64"
+    go_sha256="74d97be1cc3a474129590c67ebf748a96e72d9f3a2b6fef3ed3275de591d49b3"
+    ;;
+  *)
+    echo "Unsupported CPU architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+if [[ ! -x /usr/local/go/bin/go ]] || [[ "$(/usr/local/go/bin/go version)" != "go version go${go_version} linux/${go_arch}" ]]; then
+  echo "Installing Go ${go_version}..."
+  archive="$(mktemp)"
+  trap 'rm -f "$archive"' EXIT
+  curl -fsSL "https://go.dev/dl/go${go_version}.linux-${go_arch}.tar.gz" -o "$archive"
+  echo "${go_sha256}  ${archive}" | sha256sum --check --status
+  sudo rm -rf /usr/local/go
+  sudo tar -C /usr/local -xzf "$archive"
+fi
+
+sudo ln -sfn /usr/local/go/bin/go /usr/local/bin/go
+sudo ln -sfn /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+echo "Downloading Go modules..."
+go mod download
+
+echo "Verifying the repository..."
+go test ./...
