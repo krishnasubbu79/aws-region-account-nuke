@@ -141,7 +141,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	flags.StringVar(&result.account, "account", "", "required 12-digit AWS account ID")
 	flags.StringVar(&result.region, "region", "", "required AWS region")
 	flags.StringVar(&result.profile, "profile", "", "AWS shared-config profile")
-	flags.Var(&services, "services", "required comma-separated services: msk,elasticache,opensearch,rds")
+	flags.Var(&services, "services", "required comma-separated services: msk,elasticache,opensearch,rds,efs")
 	flags.Var(&resourceIDs, "resource-id", "resource ID, name, or ARN to select; repeatable")
 	flags.Var(&tags, "tag", "tag selector in Key=Value form; repeatable")
 	flags.Var(&deniedAccounts, "deny-account", "account ID that must never be targeted; repeatable")
@@ -182,7 +182,7 @@ func (o options) validate() error {
 	if len(o.serviceNames) == 0 {
 		return errors.New("--services is required")
 	}
-	supported := map[string]bool{"msk": true, "elasticache": true, "opensearch": true, "rds": true}
+	supported := map[string]bool{"msk": true, "elasticache": true, "opensearch": true, "rds": true, "efs": true}
 	for _, name := range o.serviceNames {
 		if !supported[name] {
 			return fmt.Errorf("unsupported service %q", name)
@@ -232,6 +232,8 @@ func selectedServices(awsConfig aws.Config, options options) []nuke.Service {
 			services = append(services, nuke.NewOpenSearchService(awsConfig))
 		case "rds":
 			services = append(services, nuke.NewRDSService(awsConfig, options.disableDeletionProtection))
+		case "efs":
+			services = append(services, nuke.NewEFSService(awsConfig, nuke.Selector{IDs: options.resourceIDs, Tags: options.tags}))
 		}
 	}
 	return services

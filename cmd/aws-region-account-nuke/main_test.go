@@ -43,14 +43,14 @@ func TestParseOptionsReadsServicesTagsAndDenylist(t *testing.T) {
 	options, err := parseOptions([]string{
 		"--account", "123456789012",
 		"--region", "ap-south-1",
-		"--services", "rds,msk",
+		"--services", "rds,msk,efs",
 		"--tag", "Environment=preview",
 		"--tag", "Owner=payments",
 	}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(options.serviceNames) != 2 || options.serviceNames[0] != "rds" || options.serviceNames[1] != "msk" {
+	if len(options.serviceNames) != 3 || options.serviceNames[0] != "rds" || options.serviceNames[1] != "msk" || options.serviceNames[2] != "efs" {
 		t.Fatalf("service names = %v", options.serviceNames)
 	}
 	if options.tags["Environment"] != "preview" || options.tags["Owner"] != "payments" {

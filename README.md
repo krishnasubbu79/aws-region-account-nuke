@@ -1,7 +1,7 @@
 # AWS Region Account Nuke
 
 A deliberately small CLI for removing selected high-cost AWS resources from one account and region.
-It supports MSK, ElastiCache, OpenSearch, Aurora, and standalone RDS instances.
+It supports MSK, ElastiCache, OpenSearch, Aurora, standalone RDS instances, and EFS.
 
 The command is safe by default: it only produces a plan unless `--execute` is supplied, requires an
 explicit account and service list, and requires at least one resource ID or tag selector.
@@ -32,10 +32,41 @@ or if all supplied `--tag` values match. Repeat either flag as needed. Supported
 - `elasticache`: replication groups, standalone cache clusters, and serverless caches
 - `opensearch`: managed domains and serverless collections
 - `rds`: Aurora clusters and standalone RDS instances
+- `efs`: standalone file systems and same-account, same-region replication pairs
 
 Resources tagged `DoNotDelete=true` are always shown as protected and never deleted.
 Deleting an Aurora cluster also deletes its member DB instances, because AWS requires this ordering.
 Every member is checked for the protection tag and deletion protection before any member is changed.
+
+## EFS cleanup
+
+```sh
+./aws-region-account-nuke --account 123456789012 --region ap-south-1 \
+  --services efs --resource-id fs-11111111 --resource-id fs-22222222
+```
+
+For standalone EFS, select just the file system. For replication, select **both source and destination**
+(by ID, name, ARN, or matching tags). Removing replication alone leaves the destination file system
+and its storage charges behind, so the CLI requires both ends to be selected and unprotected.
+It checks this during planning and again before deletion. It does not implicitly expand selectors.
+
+Cleanup removes replication first and waits for both ends to detach, removes access points and mount
+targets, waits for their deletion, and finally deletes each selected file system and its data.
+EFS deletions are serialized to avoid competing replication-removal requests. Prerequisite waits
+still run with `--wait=false`; only the final file-system wait is skipped. Protected access points
+also prevent cleanup of their file system. Existing AWS Backup recovery points, security groups,
+subnets, and KMS keys are retained; mount-target network interfaces are removed by EFS.
+
+**Cross-region and cross-account replication are refused**, because removing their configuration
+would affect resources outside the confirmed account/region. Detach such replication separately,
+then run the CLI against each account/region explicitly. There is no local-only replication cleanup
+fallback that could leave an unrecoverable remote configuration.
+
+The EFS IAM permissions are `elasticfilesystem:DescribeFileSystems`,
+`elasticfilesystem:DescribeReplicationConfigurations`, `elasticfilesystem:DescribeAccessPoints`,
+`elasticfilesystem:DescribeMountTargets`, `elasticfilesystem:DeleteReplicationConfiguration`,
+`elasticfilesystem:DeleteAccessPoint`, `elasticfilesystem:DeleteMountTarget`, and
+`elasticfilesystem:DeleteFileSystem`. Dry runs need only the describe permissions.
 
 ## Execute
 
